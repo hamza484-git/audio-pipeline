@@ -127,17 +127,157 @@ class Pipeline:
             if self.output is not None:
                 self.output.close()
 
+
+class PubSubRouter:
+    """Routes incoming Pub/Sub deliveries to per-match Pipeline instances.
+
+    A single Pub/Sub subscriber receives events for ALL matches. This router
+    dynamically creates and manages one isolated Pipeline per match_id,
+    preventing any cross-match audio contamination.
+
+    Each match outputs its own HLS stream to:
+        hls_stream/{match_id}/stream.m3u8
+    """
+
+    def __init__(
+        self,
+        audio_cfg: AudioConfig,
+        gcs_cfg: GCSConfig,
+        sched_cfg: SchedulerConfig,
+        base_output_dir: str,
+        crowd_noise: str,
+        dry_run: bool = False,
+    ):
+        self._audio_cfg = audio_cfg
+        self._gcs_cfg = gcs_cfg
+        self._sched_cfg = sched_cfg
+        self._base_output_dir = base_output_dir
+        self._crowd_noise = crowd_noise
+        self._dry_run = dry_run
+
+        self._pipelines: dict = {}
+        self._pipeline_threads: dict = {}
+        self._lock = threading.Lock()
+
+    def route(self, match_id: str, delivery: Delivery) -> None:
+        """Route a delivery to the correct match pipeline, creating it if needed."""
+        with self._lock:
+            if match_id not in self._pipelines:
+                pipeline = self._create_pipeline(match_id)
+                self._pipelines[match_id] = pipeline
+                t = threading.Thread(
+                    target=pipeline.run,
+                    name=f"pipeline-{match_id}",
+                    daemon=True,
+                )
+                self._pipeline_threads[match_id] = t
+                t.start()
+                log.info("Started new pipeline for match: %s", match_id)
+
+        self._pipelines[match_id].enqueue(delivery)
+
+    def _create_pipeline(self, match_id: str) -> Pipeline:
+        """Create a fully configured Pipeline for the given match."""
+        output_dir = os.path.join(self._base_output_dir, match_id)
+        os.makedirs(output_dir, exist_ok=True)
+
+        broadcast_cfg = BroadcastConfig(
+            output_url=os.path.join(output_dir, "stream.m3u8"),
+            container="hls",
+        )
+
+        # Per-match GCS cache subdirectory to avoid cache collisions between matches
+        gcs_cfg = GCSConfig(
+            bucket=self._gcs_cfg.bucket,
+            prefix=match_id,
+            cache_dir=os.path.join(self._gcs_cfg.cache_dir, match_id),
+            preload_count=self._gcs_cfg.preload_count,
+        )
+
+        return Pipeline(
+            self._audio_cfg,
+            gcs_cfg,
+            self._sched_cfg,
+            broadcast_cfg,
+            dry_run=self._dry_run,
+        )
+
+    def active_matches(self) -> list:
+        with self._lock:
+            return list(self._pipelines.keys())
+
+
+def _build_audio_cfg(crowd_noise: str) -> AudioConfig:
+    audio_cfg = AudioConfig()
+    crowd_map = {
+        "india": "assets/crowd_india.wav",
+        "australia": "assets/crowd_australia.wav",
+        "england": "assets/crowd_england.wav",
+        "none": None,
+    }
+    audio_cfg.crowd_file = crowd_map.get(crowd_noise)
+    return audio_cfg
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     p = argparse.ArgumentParser()
-    p.add_argument("--deliveries", default=None, help="use local JSON file instead of Cloud SQL")
+    p.add_argument("--deliveries", default=None, help="use local JSON file instead of Cloud SQL or Pub/Sub")
     p.add_argument("--video", default=None, help="video input URL or file (optional)")
     p.add_argument("--dry-run", action="store_true", help="skip ffmpeg output")
     p.add_argument("--local-commentary", default=None, help="local folder of commentary clips (skips GCS)")
-    p.add_argument("--output-url", default=None, help="override the broadcast output URL")
+    p.add_argument("--output-url", default=None, help="override the broadcast output URL (single-match mode only)")
     p.add_argument("--crowd-noise", choices=["india", "australia", "england", "none"], default="india", help="choose background crowd noise")
+    p.add_argument("--pubsub", action="store_true", help="use Google Cloud Pub/Sub feed (multi-match mode)")
+    p.add_argument("--match-id", default=None, help="filter Pub/Sub events to a specific match ID (optional)")
     args = p.parse_args()
 
+    audio_cfg = _build_audio_cfg(args.crowd_noise)
+
+    # ── Pub/Sub multi-match mode ────────────────────────────────────────────
+    if args.pubsub:
+        from config import PubSubConfig
+        from pubsub_feed import PubSubDeliveryFeed
+
+        pubsub_cfg = PubSubConfig(
+            project_id=os.environ.get("PUBSUB_PROJECT_ID", PubSubConfig.project_id),
+            subscription_id=os.environ.get("PUBSUB_SUBSCRIPTION_ID", PubSubConfig.subscription_id),
+        )
+
+        router = PubSubRouter(
+            audio_cfg=audio_cfg,
+            gcs_cfg=GCSConfig(),
+            sched_cfg=SchedulerConfig(),
+            base_output_dir="hls_stream",
+            crowd_noise=args.crowd_noise,
+            dry_run=args.dry_run,
+        )
+
+        feed = PubSubDeliveryFeed(
+            config=pubsub_cfg,
+            on_delivery=router.route,
+            match_id_filter=args.match_id or os.environ.get("MATCH_ID"),
+        )
+
+        log.info(
+            "Starting Pub/Sub multi-match router | project=%s subscription=%s match_filter=%s",
+            pubsub_cfg.project_id,
+            pubsub_cfg.subscription_id,
+            args.match_id or os.environ.get("MATCH_ID") or "ALL",
+        )
+        feed.start()
+
+        try:
+            while True:
+                time.sleep(10)
+                log.info("Active matches: %s", router.active_matches())
+        except KeyboardInterrupt:
+            log.info("Pub/Sub router stopped by user")
+        finally:
+            feed.stop()
+        return
+
+    # ── Single-match mode (JSON file or Cloud SQL) ─────────────────────────
     broadcast_cfg = BroadcastConfig()
     if args.output_url:
         broadcast_cfg.output_url = args.output_url
@@ -146,16 +286,6 @@ def main():
 
     if os.environ.get("OUTPUT_CONTAINER"):
         broadcast_cfg.container = os.environ.get("OUTPUT_CONTAINER")
-
-    audio_cfg = AudioConfig()
-    if args.crowd_noise == "india":
-        audio_cfg.crowd_file = "assets/crowd_india.wav"
-    elif args.crowd_noise == "australia":
-        audio_cfg.crowd_file = "assets/crowd_australia.wav"
-    elif args.crowd_noise == "england":
-        audio_cfg.crowd_file = "assets/crowd_england.wav"
-    elif args.crowd_noise == "none":
-        audio_cfg.crowd_file = None
 
     pipeline = Pipeline(
         audio_cfg,

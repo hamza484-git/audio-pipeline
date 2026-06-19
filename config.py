@@ -46,3 +46,9 @@ class CloudSQLConfig:
     db_name: str = "audio_db"
     match_id: str = "match_1001"
     poll_interval_sec: float = 1.0
+
+
+@dataclass
+class PubSubConfig:
+    project_id: str = "sportsanalytics-495612"
+    subscription_id: str = "streaming-audio-ready-sub"
