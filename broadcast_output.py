@@ -40,8 +40,14 @@ class BroadcastOutput:
             "-c:a", audio_codec,
             "-b:a", audio_bitrate,
             "-f", container,
-            output_url,
         ]
+        if container == "hls":
+            cmd += [
+                "-hls_time", "2",
+                "-hls_list_size", "5",
+                "-hls_flags", "delete_segments"
+            ]
+        cmd += [output_url]
 
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 

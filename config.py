@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -8,7 +9,7 @@ class AudioConfig:
     block_size: int = 1024
     dtype: str = "float32"
 
-    crowd_file: str = "assets/crowd_idle.wav"
+    crowd_file: Optional[str] = "assets/crowd_india.wav"
     crowd_volume: float = 1.0
     ducked_volume: float = 0.3
     fade_ms: int = 400

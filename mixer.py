@@ -1,6 +1,6 @@
 import threading
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -22,7 +22,7 @@ class AudioMixer:
 
     def __init__(
         self,
-        crowd: CrowdLoop,
+        crowd: Optional[CrowdLoop],
         sample_rate: int,
         channels: int,
         crowd_volume: float = 1.0,
@@ -53,7 +53,10 @@ class AudioMixer:
             self._clips.append(ActiveClip(audio=audio.astype(np.float32)))
 
     def render(self, frames: int) -> np.ndarray:
-        crowd = self._crowd.read(frames)
+        if self._crowd:
+            crowd = self._crowd.read(frames)
+        else:
+            crowd = np.zeros((frames, self._ch), dtype=np.float32)
 
         with self._lock:
             active = self._clips

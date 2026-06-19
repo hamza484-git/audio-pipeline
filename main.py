@@ -36,7 +36,11 @@ class Pipeline:
         self._play_time = 0.0
         self._playback_lock = threading.Lock()
 
-        self.crowd = CrowdLoop(audio_cfg.crowd_file, audio_cfg.sample_rate, audio_cfg.channels)
+        if audio_cfg.crowd_file:
+            self.crowd = CrowdLoop(audio_cfg.crowd_file, audio_cfg.sample_rate, audio_cfg.channels)
+        else:
+            self.crowd = None
+
         self.mixer = AudioMixer(
             self.crowd,
             audio_cfg.sample_rate,
@@ -131,6 +135,7 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="skip ffmpeg output")
     p.add_argument("--local-commentary", default=None, help="local folder of commentary clips (skips GCS)")
     p.add_argument("--output-url", default=None, help="override the broadcast output URL")
+    p.add_argument("--crowd-noise", choices=["india", "australia", "england", "none"], default="india", help="choose background crowd noise")
     args = p.parse_args()
 
     broadcast_cfg = BroadcastConfig()
@@ -139,8 +144,21 @@ def main():
     elif os.environ.get("OUTPUT_URL"):
         broadcast_cfg.output_url = os.environ.get("OUTPUT_URL")
 
+    if os.environ.get("OUTPUT_CONTAINER"):
+        broadcast_cfg.container = os.environ.get("OUTPUT_CONTAINER")
+
+    audio_cfg = AudioConfig()
+    if args.crowd_noise == "india":
+        audio_cfg.crowd_file = "assets/crowd_india.wav"
+    elif args.crowd_noise == "australia":
+        audio_cfg.crowd_file = "assets/crowd_australia.wav"
+    elif args.crowd_noise == "england":
+        audio_cfg.crowd_file = "assets/crowd_england.wav"
+    elif args.crowd_noise == "none":
+        audio_cfg.crowd_file = None
+
     pipeline = Pipeline(
-        AudioConfig(),
+        audio_cfg,
         GCSConfig(),
         SchedulerConfig(),
         broadcast_cfg,
