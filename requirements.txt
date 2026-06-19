@@ -1,0 +1,7 @@
+numpy>=1.24
+soundfile>=0.12
+google-cloud-storage>=2.10
+pydub>=0.25
+aiohttp>=3.9
+cloud-sql-python-connector[pg8000]>=1.5.0
+SQLAlchemy>=2.0.0

@@ -1,0 +1,23 @@
+[
+  {
+    "delivery_id": "12345",
+    "match_id": "1001",
+    "video_timestamp": 12.0,
+    "audio_path": "match_1001/delivery_12345.mp3",
+    "duration": 4.5
+  },
+  {
+    "delivery_id": "12346",
+    "match_id": "1001",
+    "video_timestamp": 30.0,
+    "audio_path": "match_1001/delivery_12346.mp3",
+    "duration": 4.0
+  },
+  {
+    "delivery_id": "12347",
+    "match_id": "1001",
+    "video_timestamp": 50.0,
+    "audio_path": "match_1001/delivery_12347.mp3",
+    "duration": 5.0
+  }
+]
