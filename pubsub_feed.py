@@ -12,12 +12,25 @@ log = logging.getLogger(__name__)
 
 
 class PubSubDeliveryFeed:
-    """Subscribes to a Google Cloud Pub/Sub topic and routes incoming
-    commentary.audio_ready events to per-match delivery callbacks.
+    """Subscribes to the streaming team's Pub/Sub subscription and routes
+    incoming commentary.audio_ready events to per-match delivery callbacks.
 
-    The router creates a single Pub/Sub pull subscription and dispatches
-    each message to the correct match handler via the on_delivery callback,
-    which is keyed on match_id.
+    Subscription: projects/sportsanalytics-495612/subscriptions/streaming-audio-ready-sub
+
+    Expected message schema:
+        {
+            "event_type": "commentary.audio_ready",
+            "match_id":   "<match-id>",
+            "commentary_id": "<id>",
+            "data": {
+                "storage_bucket": "commentary-audio-staging",
+                "storage_path":   "<path/to/file.mp3>",
+                "duration_ms":    5000
+            }
+        }
+
+    The full GCS URI is constructed as gs://{storage_bucket}/{storage_path}
+    and stored on the Delivery object for the cache to download.
     """
 
     def __init__(
@@ -80,10 +93,24 @@ class PubSubDeliveryFeed:
             payload = data.get("data", {})
             match_id = data.get("match_id") or payload.get("match_id")
             commentary_id = data.get("commentary_id")
+
+            # Build the full GCS URI from the separate bucket + path fields
+            # provided by the streaming team's message schema:
+            #   gs://{data.storage_bucket}/{data.storage_path}
+            storage_bucket = payload.get("storage_bucket")
             storage_path = payload.get("storage_path") or payload.get("audio_url")
             duration_ms = payload.get("duration_ms", 5000)
 
-            if not commentary_id or not storage_path:
+            if storage_bucket and storage_path:
+                # Canonical URI — lets the cache download from the correct bucket
+                gcs_uri = f"gs://{storage_bucket}/{storage_path.lstrip('/')}"
+            elif storage_path and storage_path.startswith("gs://"):
+                # Already a full URI (forward-compatible)
+                gcs_uri = storage_path
+            else:
+                gcs_uri = storage_path  # fallback: bare blob path
+
+            if not commentary_id or not gcs_uri:
                 log.warning("Malformed Pub/Sub message, missing fields: %s", data)
                 message.ack()
                 return
@@ -99,14 +126,15 @@ class PubSubDeliveryFeed:
             delivery = Delivery(
                 timestamp=0.0,  # Play immediately; Pipeline.enqueue handles buffering
                 delivery_id=str(commentary_id),
-                audio_path=storage_path,
+                audio_path=gcs_uri,   # full gs:// URI
                 duration=duration_ms / 1000.0,
             )
 
             log.info(
-                "Received commentary.audio_ready | match=%s commentary=%s duration=%.1fs",
+                "Received commentary.audio_ready | match=%s commentary=%s gcs=%s duration=%.1fs",
                 match_id,
                 commentary_id,
+                gcs_uri,
                 delivery.duration,
             )
 

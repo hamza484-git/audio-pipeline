@@ -61,7 +61,11 @@ class CommentaryCache:
 
         try:
             return fut.result(timeout=timeout)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Failed to fetch/decode commentary %s: %s", delivery_id, e
+            )
             return None
 
     def evict(self, delivery_id: str) -> None:
@@ -79,10 +83,20 @@ class CommentaryCache:
             if not os.path.exists(local):
                 if storage is None:
                     raise RuntimeError("google-cloud-storage not installed")
-                if self._bucket is None:
+                if self._client is None:
                     self._client = storage.Client()
-                    self._bucket = self._client.bucket(self.bucket_name)
-                blob = self._bucket.blob(gcs_path)
+
+                # Support full gs://bucket/path URIs delivered by Pub/Sub
+                if gcs_path.startswith("gs://"):
+                    without_scheme = gcs_path[len("gs://"):]
+                    bucket_name, blob_name = without_scheme.split("/", 1)
+                else:
+                    # Legacy: bare blob path, use the configured default bucket
+                    bucket_name = self.bucket_name
+                    blob_name = gcs_path
+
+                bucket = self._client.bucket(bucket_name)
+                blob = bucket.blob(blob_name)
                 blob.download_to_filename(local)
 
         data, sr = sf.read(local, dtype="float32", always_2d=True)

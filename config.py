@@ -17,7 +17,7 @@ class AudioConfig:
 
 @dataclass
 class GCSConfig:
-    bucket: str = "commentary"
+    bucket: str = "commentary-audio-staging"  # streaming team's audio bucket
     prefix: str = "match_1001"
     cache_dir: str = ".cache/commentary"
     preload_count: int = 3
@@ -51,4 +51,6 @@ class CloudSQLConfig:
 @dataclass
 class PubSubConfig:
     project_id: str = "sportsanalytics-495612"
+    # Full subscription path used by the streaming team:
+    # projects/sportsanalytics-495612/subscriptions/streaming-audio-ready-sub
     subscription_id: str = "streaming-audio-ready-sub"
