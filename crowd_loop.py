@@ -8,11 +8,21 @@ class CrowdLoop:
 
     def __init__(self, path: str, sample_rate: int, channels: int, crossfade_ms: int = 50, skip_sec: float = 0.0):
         data, sr = sf.read(path, dtype="float32", always_2d=True)
+        
+        # Resample if the file's sample rate doesn't match the pipeline
         if sr != sample_rate:
-            raise ValueError(f"crowd file sr={sr} != pipeline sr={sample_rate}")
+            old_len = len(data)
+            new_len = int(old_len * sample_rate / sr)
+            old_indices = np.arange(old_len)
+            new_indices = np.linspace(0, old_len - 1, new_len)
+            resampled = np.column_stack([
+                np.interp(new_indices, old_indices, data[:, ch])
+                for ch in range(data.shape[1])
+            ]).astype(np.float32)
+            data = resampled
             
         if skip_sec > 0.0:
-            skip_frames = int(skip_sec * sr)
+            skip_frames = int(skip_sec * sample_rate)
             if skip_frames >= len(data):
                 raise ValueError("skip_sec is larger than the file duration")
             data = data[skip_frames:]

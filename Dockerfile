@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Set default command
-CMD ["python", "main.py"]
+# Set default command for GCP (Pub/Sub multi-match mode with Indian crowd)
+CMD ["python", "main.py", "--pubsub", "--crowd-noise", "india"]

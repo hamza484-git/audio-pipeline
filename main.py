@@ -436,6 +436,17 @@ def main():
         broadcast_cfg.output_url = args.output_url
     elif os.environ.get("OUTPUT_URL"):
         broadcast_cfg.output_url = os.environ.get("OUTPUT_URL")
+    else:
+        # Same RTMP/HLS fallback as PubSubRouter
+        rtmp_base = os.environ.get("RTMP_BASE_URL", "").rstrip("/")
+        if rtmp_base:
+            broadcast_cfg.output_url = f"{rtmp_base}/local"
+            broadcast_cfg.container = "flv"
+        else:
+            output_dir = os.path.join("hls_stream", "local")
+            os.makedirs(output_dir, exist_ok=True)
+            broadcast_cfg.output_url = os.path.join(output_dir, "stream.m3u8")
+            broadcast_cfg.container = "hls"
 
     if os.environ.get("OUTPUT_CONTAINER"):
         broadcast_cfg.container = os.environ.get("OUTPUT_CONTAINER")
@@ -448,6 +459,7 @@ def main():
         video_input=args.video,
         dry_run=args.dry_run,
         local_commentary=args.local_commentary,
+        monitor=args.monitor,
     )
 
     feed = None
