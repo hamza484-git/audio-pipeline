@@ -75,7 +75,12 @@ class Pipeline:
         self._playback_lock = threading.Lock()
 
         if audio_cfg.crowd_file:
-            self.crowd = CrowdLoop(audio_cfg.crowd_file, audio_cfg.sample_rate, audio_cfg.channels)
+            self.crowd = CrowdLoop(
+                audio_cfg.crowd_file, 
+                audio_cfg.sample_rate, 
+                audio_cfg.channels,
+                skip_sec=audio_cfg.crowd_skip_sec
+            )
         else:
             self.crowd = None
 
@@ -309,13 +314,14 @@ class PubSubRouter:
 
 def _build_audio_cfg(crowd_noise: str) -> AudioConfig:
     audio_cfg = AudioConfig()
-    crowd_map = {
-        "india": "assets/crowd_india.wav",
-        "australia": "assets/crowd_australia.wav",
-        "england": "assets/crowd_england.wav",
-        "none": None,
-    }
-    audio_cfg.crowd_file = crowd_map.get(crowd_noise)
+    if crowd_noise.lower() == "none":
+        audio_cfg.crowd_file = None
+    elif crowd_noise.lower() == "india":
+        audio_cfg.crowd_file = "assets/ind_stadium.mp3"
+        audio_cfg.crowd_skip_sec = 20.0
+        audio_cfg.crowd_volume = 0.7
+    elif crowd_noise.lower() != "default":
+        audio_cfg.crowd_file = f"assets/crowd_{crowd_noise}.wav"
     return audio_cfg
 
 class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):

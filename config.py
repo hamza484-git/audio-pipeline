@@ -9,8 +9,9 @@ class AudioConfig:
     block_size: int = 1024
     dtype: str = "float32"
 
-    crowd_file: Optional[str] = "assets/crowd_india.wav"
-    crowd_volume: float = 1.0
+    crowd_file: Optional[str] = "assets/ind_stadium.mp3"
+    crowd_skip_sec: float = 20.0
+    crowd_volume: float = 0.7
     ducked_volume: float = 0.3
     fade_ms: int = 400
 

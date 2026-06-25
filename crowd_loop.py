@@ -6,10 +6,17 @@ class CrowdLoop:
     """Seamless looping crowd ambience with a short equal-power crossfade
     at the loop boundary to avoid audible clicks."""
 
-    def __init__(self, path: str, sample_rate: int, channels: int, crossfade_ms: int = 50):
+    def __init__(self, path: str, sample_rate: int, channels: int, crossfade_ms: int = 50, skip_sec: float = 0.0):
         data, sr = sf.read(path, dtype="float32", always_2d=True)
         if sr != sample_rate:
             raise ValueError(f"crowd file sr={sr} != pipeline sr={sample_rate}")
+            
+        if skip_sec > 0.0:
+            skip_frames = int(skip_sec * sr)
+            if skip_frames >= len(data):
+                raise ValueError("skip_sec is larger than the file duration")
+            data = data[skip_frames:]
+            
         if data.shape[1] == 1 and channels == 2:
             data = np.repeat(data, 2, axis=1)
         self._buf = self._apply_loop_crossfade(data, int(sr * crossfade_ms / 1000))
