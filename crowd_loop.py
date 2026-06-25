@@ -29,7 +29,7 @@ class CrowdLoop:
             
         if data.shape[1] == 1 and channels == 2:
             data = np.repeat(data, 2, axis=1)
-        self._buf = self._apply_loop_crossfade(data, int(sr * crossfade_ms / 1000))
+        self._buf = self._apply_loop_crossfade(data, int(sample_rate * crossfade_ms / 1000))
         self._pos = 0
         self._n = len(self._buf)
 
