@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
-# Install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install ffmpeg and libsndfile1 (required by python soundfile)
+RUN apt-get update && apt-get install -y ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Set default command
-CMD ["python", "main.py"]
+# Set default command for GCP (Pub/Sub multi-match mode with Indian crowd)
+CMD ["python", "main.py", "--pubsub", "--crowd-noise", "india"]

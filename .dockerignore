@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+__pycache__/
+*.pyc
+.cache/
+hls_stream/
+output.flv
+commentary_files/
+*.md
+deliveries*.json
+check_schema.py

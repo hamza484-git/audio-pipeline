@@ -44,8 +44,8 @@ class BroadcastOutput:
         if container == "hls":
             cmd += [
                 "-hls_time", "2",
-                "-hls_list_size", "5",
-                "-hls_flags", "delete_segments"
+                "-hls_list_size", "15",       # keep last 30 seconds of audio
+                "-hls_flags", "delete_segments",  # prevent disk space crash
             ]
         cmd += [output_url]
 

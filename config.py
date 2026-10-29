@@ -9,15 +9,16 @@ class AudioConfig:
     block_size: int = 1024
     dtype: str = "float32"
 
-    crowd_file: Optional[str] = "assets/crowd_india.wav"
-    crowd_volume: float = 1.0
+    crowd_file: Optional[str] = "assets/ind_stadium.mp3"
+    crowd_skip_sec: float = 20.0
+    crowd_volume: float = 0.7
     ducked_volume: float = 0.3
     fade_ms: int = 400
 
 
 @dataclass
 class GCSConfig:
-    bucket: str = "commentary"
+    bucket: str = "commentary-audio-staging"  # streaming team's audio bucket
     prefix: str = "match_1001"
     cache_dir: str = ".cache/commentary"
     preload_count: int = 3
@@ -46,3 +47,11 @@ class CloudSQLConfig:
     db_name: str = "audio_db"
     match_id: str = "match_1001"
     poll_interval_sec: float = 1.0
+
+
+@dataclass
+class PubSubConfig:
+    project_id: str = "sportsanalytics-495612"
+    # Full subscription path used by the streaming team:
+    # projects/sportsanalytics-495612/subscriptions/streaming-audio-ready-sub
+    subscription_id: str = "streaming-audio-ready-sub"
