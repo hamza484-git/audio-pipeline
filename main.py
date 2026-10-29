@@ -12,7 +12,7 @@ from broadcast_clock import BroadcastClock
 from broadcast_output import BroadcastOutput
 from commentary_cache import CommentaryCache
 from config import AudioConfig, BroadcastConfig, GCSConfig, SchedulerConfig, CloudSQLConfig
-from crowd_loop import CrowdLoop
+from crowd_loop import CrowdLoop, CrowdReader
 from delivery_feed import JsonDeliveryFeed
 from cloudsql_feed import CloudSQLDeliveryFeed
 from mixer import AudioMixer
@@ -61,11 +61,12 @@ class Pipeline:
         local_commentary: Optional[str] = None,
         monitor: bool = False,
         on_idle_timeout: Optional[Callable[[], None]] = None,
+        crowd=None,
     ):
         self.audio_cfg = audio_cfg
         self.sched_cfg = sched_cfg
         self.dry_run = dry_run
-        
+
         self._on_idle_timeout = on_idle_timeout
         self._last_activity_time = time.monotonic()
         self._stop_event = threading.Event()
@@ -74,10 +75,12 @@ class Pipeline:
         self._play_time = 0.0
         self._playback_lock = threading.Lock()
 
-        if audio_cfg.crowd_file:
+        if crowd is not None:
+            self.crowd = crowd
+        elif audio_cfg.crowd_file:
             self.crowd = CrowdLoop(
-                audio_cfg.crowd_file, 
-                audio_cfg.sample_rate, 
+                audio_cfg.crowd_file,
+                audio_cfg.sample_rate,
                 audio_cfg.channels,
                 skip_sec=audio_cfg.crowd_skip_sec
             )
@@ -148,6 +151,7 @@ class Pipeline:
         audio = self.cache.get(d.delivery_id, d.audio_path, timeout=30.0)
         if audio is None:
             log.error("commentary %s not ready, skipping", d.delivery_id)
+            self.cache.evict(d.delivery_id)
             return
 
         with self._playback_lock:
@@ -230,6 +234,20 @@ class PubSubRouter:
         self._pipeline_threads: dict = {}
         self._lock = threading.Lock()
 
+        # Decode the crowd ambience once and share the (~hundreds of MB) buffer
+        # across every per-match pipeline; each pipeline gets its own cheap
+        # cursor via CrowdLoop.reader(). This keeps memory flat as matches
+        # scale instead of multiplying by match count.
+        if audio_cfg.crowd_file:
+            self._shared_crowd = CrowdLoop(
+                audio_cfg.crowd_file,
+                audio_cfg.sample_rate,
+                audio_cfg.channels,
+                skip_sec=audio_cfg.crowd_skip_sec,
+            )
+        else:
+            self._shared_crowd = None
+
     def route(self, match_id: str, delivery: Delivery) -> None:
         """Route a delivery to the correct match pipeline, creating it if needed."""
         with self._lock:
@@ -295,6 +313,7 @@ class PubSubRouter:
             dry_run=self._dry_run,
             monitor=self._monitor,
             on_idle_timeout=on_timeout,
+            crowd=self._shared_crowd.reader() if self._shared_crowd else None,
         )
 
     def active_matches(self) -> list:
